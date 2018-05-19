@@ -3,6 +3,8 @@
 \usepackage[utf8]{inputenc}
 \usepackage[colorlinks]{hyperref}
 
+\newcommand{\lnk}[2]{\href{#1}{\textcolor[rgb]{1.0,0.0,0.0}{#2}}}
+
 \title{Data Science in Ten Minutes\footnote{for extremely large values of ten}}
 \author{Spencer Tipping}
 
@@ -15,8 +17,27 @@
 
   \newpage
   \section{Linux}
-  Every program that does a thing does it by talking to an OS kernel using a
-  fairly narrow protocol.
+  Oh yes, we are totally going here. Here's why.
+
+  Backend programs and processing pipelines and stuff (basically, ``big data''
+  things) operate entirely by talking to the kernel, which, in big-data world,
+  is usually Linux; and this is true regardless of the language, libraries, and
+  framework(s) you're using. You can always throw more hardware at a
+  problem\footnote{Until you can't}, but if you understand system-level
+  programming you'll often have a better/cheaper option.
+
+  Some quick background reading:
+
+  \begin{itemize}
+    \item \lnk{https://github.com/spencertipping/shell-tutorial}
+              {How to write a UNIX shell}
+    \item \lnk{https://github.com/spencertipping/jit-tutorial}
+              {How to write a JIT compiler}
+    \item \lnk{http://manpages.ubuntu.com/manpages/xenial/man5/elf.5.html}
+              {ELF executable binary spec}
+    \item \lnk{https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf}
+              {Intel machine code documentation}
+  \end{itemize}
 
   \subsection{Homework (if that's your thing)}
   \begin{enumerate}
