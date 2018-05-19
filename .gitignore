@@ -3,3 +3,5 @@
 *.log
 *.out
 *.toc
+examples/elf-header
+examples/elf-hello
