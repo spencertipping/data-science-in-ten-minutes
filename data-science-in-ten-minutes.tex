@@ -12,7 +12,7 @@
   \maketitle
   \tableofcontents
 
-  \section{Introduction}
+  \section*{Introduction}
   {\bf Data science is not machine learning.} There is no machine learning in
   this guide, because machine learning is the wrong answer to most problems
   you're likely to run into. I've never deployed a machine learning system,
@@ -21,10 +21,10 @@
 
   A lot of the code examples assume you're running Linux because Linux is the
   go-to platform for medium/big data processing. It's also ideal for small data
-  due to optimizations in core utilities like {\tt sort}.\footnote{GNU {\tt sort}
-  will compress temporary files, unlike the {\tt sort} that ships with Mac OSX
-  for instance.} If you're running a non-Linux OS and want to try stuff, you
-  have a few options:
+  due to optimizations in core utilities like {\tt sort}.\footnote{GNU {\tt
+  sort} will compress temporary files, unlike the {\tt sort} that ships with
+  OSX.} If you're running a non-Linux OS and want to try stuff, you have a few
+  options:
 
   \begin{itemize}
     \item Install \lnk{https://docker.com}{Docker} and create a container from
@@ -49,7 +49,7 @@
   Spark, but a lot of data science is best done with native tools that use less
   memory and have lower iteration time.}
 
-  \subsection{Examples}
+  \subsection*{Examples}
   This guide comes with
   \lnk{https://github.com/spencertipping/data-science-in-ten-minutes/tree/master/example}{example
   code} in the original repository. Where necessary, I've included package
@@ -149,6 +149,19 @@ $ dd if=/dev/zero count=2048 bs=$((1048576 * 4)) of=/dev/null
 2048+0 records in
 2048+0 records out
 8589934592 bytes (8.6 GB, 8.0 GiB) copied, 1.14022 s, 7.5 GB/s\end{verbatim}
+
+  This makes sense considering the processor hardware:
+
+  \begin{verbatim}
+$ grep cache /proc/cpuinfo
+cache size	: 3072 KB
+cache_alignment	: 64
+cache size	: 3072 KB
+cache_alignment	: 64
+cache size	: 3072 KB
+cache_alignment	: 64
+cache size	: 3072 KB
+cache_alignment	: 64\end{verbatim}
 
   \subsection{Pulling this together:~let's write a program}
   ...in machine language. For simplicity, let's write one that prints {\tt hello
@@ -312,8 +325,7 @@ $ tail -c+121 elf-hello | ndisasm -b 64 -
 00000025  4831C0            xor rax,rax
 00000028  B03C              mov al,0x3c
 0000002A  4831FF            xor rdi,rdi
-0000002D  0F05              syscall
-  \end{verbatim}
+0000002D  0F05              syscall\end{verbatim}
 
   The moment we've been waiting for:
 
@@ -321,18 +333,26 @@ $ tail -c+121 elf-hello | ndisasm -b 64 -
 $ ./elf-hello
 hello world
 $ echo $?                               # check exit status
-0
-  \end{verbatim}
+0\end{verbatim}
 
   Whether through libraries, JIT, or anything else, this is the exact mechanism
   being used by any program that performs IO of any sort:~the program lives in a
   completely virtual world and interacts with the kernel using the {\tt 0f05}
   syscall instruction, referring to virtual addresses in the process.
 
-  \subsection{Homework (if that's your thing)}
+  \subsection{Homework, if that's your thing}
   \begin{enumerate}
     \item Write an ELF Linux executable that consumes data from {\tt stdin} and
           writes that data to {\tt stdout}, then exits successfully. In other
           words, {\tt cat} without file support.
+    \item Use {\tt pack()} to produce a
+          \lnk{https://en.wikipedia.org/wiki/WAV}{RIFF WAV} file containing a
+          440Hz sine wave for ten seconds. It may be helpful to use {\tt
+          unpack()} to inspect the headers of existing WAV files because it's
+          challenging to find detailed documentation of the format.
   \end{enumerate}
+
+
+  \section{TBD}
+
 \end{document}
