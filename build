@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+
+rm -f data-science-in-ten-minutes.aux \
+      data-science-in-ten-minutes.dvi \
+      data-science-in-ten-minutes.log \
+      data-science-in-ten-minutes.out \
+      data-science-in-ten-minutes.toc
+
+latex data-science-in-ten-minutes.tex
+latex data-science-in-ten-minutes.tex
+pdflatex data-science-in-ten-minutes.tex
