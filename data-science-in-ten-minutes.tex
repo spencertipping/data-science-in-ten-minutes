@@ -324,6 +324,11 @@ $ echo $?                               # check exit status
 0
   \end{verbatim}
 
+  Whether through libraries, JIT, or anything else, this is the exact mechanism
+  being used by any program that performs IO of any sort:~the program lives in a
+  completely virtual world and interacts with the kernel using the {\tt 0f05}
+  syscall instruction, referring to virtual addresses in the process.
+
   \subsection{Homework (if that's your thing)}
   \begin{enumerate}
     \item Write an ELF Linux executable that consumes data from {\tt stdin} and
