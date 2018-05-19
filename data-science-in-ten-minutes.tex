@@ -13,7 +13,47 @@
   \tableofcontents
 
   \section{Introduction}
-  {\bf Data science is not machine learning.}
+  {\bf Data science is not machine learning.} There is no machine learning in
+  this guide, because machine learning is the wrong answer to most problems
+  you're likely to run into. I've never deployed a machine learning system,
+  although I've debugged several misbehaving ones (and will cover how to do
+  that).
+
+  A lot of the code examples assume you're running Linux because Linux is the
+  go-to platform for medium/big data processing. It's also ideal for small data
+  due to optimizations in core utilities like {\tt sort}.\footnote{GNU {\tt sort}
+  will compress temporary files, unlike the {\tt sort} that ships with Mac OSX
+  for instance.} If you're running a non-Linux OS and want to try stuff, you
+  have a few options:
+
+  \begin{itemize}
+    \item Install \lnk{https://docker.com}{Docker} and create a container from
+          the {\tt ubuntu:18.04} image or similar (I'll assume you have this
+          setup)
+    \item Run a VM like \lnk{https://www.virtualbox.org/}{VirtualBox} and
+          install \lnk{https://www.ubuntu.com/desktop}{Ubuntu Desktop} inside it
+    \item Rent a \lnk{https://aws.amazon.com/free/}{free tier} Amazon EC2
+          instance (you can use the free-tier {\tt t2.nano} or {\tt t2.micro}
+          for data science, and they're ideal for learning because they're
+          resource-constrained)
+    \item Buy a
+          \lnk{https://github.com/spencertipping/www/blob/master/datacenter.md}{cheap
+          rack server from eBay} and drop Ubuntu Server on it
+  \end{itemize}
+
+  Realistically, you probably won't want to use OSX or Windows for distributed
+  programming:~your binaries won't be portable to cluster machines, and you'll
+  be fighting with things like case-insensitive filesystems, slower core
+  utilities, and general inconsistencies that will increase debugging
+  time.\footnote{All of this is a non-issue for JVM processes, e.g.~Hadoop and
+  Spark, but a lot of data science is best done with native tools that use less
+  memory and have lower iteration time.}
+
+  \subsection{Examples}
+  This guide comes with
+  \lnk{https://github.com/spencertipping/data-science-in-ten-minutes/tree/master/example}{example
+  code} in the original repository. Where necessary, I've included package
+  installation commands required to install dependencies on Ubuntu 18.04.
 
   \newpage
   \section{Linux}
@@ -34,7 +74,11 @@
     \item \lnk{https://github.com/spencertipping/jit-tutorial}
               {How to write a JIT compiler}
     \item \lnk{http://manpages.ubuntu.com/manpages/xenial/man5/elf.5.html}
-              {ELF executable binary spec}
+              {ELF executable binary spec} (more readable version
+              \lnk{https://en.wikipedia.org/wiki/Executable_and_Linkable_Format}
+              {on Wikipedia}, and
+              \lnk{https://stackoverflow.com/questions/2427011/what-is-the-difference-between-elf-files-and-bin-files}
+                  {this StackOverflow answer} may be useful)
     \item \lnk{https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf}
               {Intel machine code documentation}
   \end{itemize}
@@ -108,11 +152,123 @@ $ dd if=/dev/zero count=2048 bs=$((1048576 * 4)) of=/dev/null
   \end{verbatim}
 
   \subsection{Pulling this together:~let's write a program}
-  ...in machine language.
+  ...in machine language. For simplicity, let's write one that prints {\tt hello
+  world} and then exits successfully (with code 0).
+
+  This is also a good opportunity to talk about how we might generate and work
+  with binary data with things like fixed offsets. Two simple functions for this
+  are \lnk{https://perldoc.perl.org/perlpacktut.html}{\tt pack()} and {\tt
+  unpack()}, variants of which ship with both Perl and Ruby.
+
+  The first part of any Linux executable is the ELF header, usually followed
+  directly by a program header; here's what those look like as C structs for
+  64-bit executables (reformatted slightly, and with docs for readability):
+
+  \begin{verbatim}
+typedef struct {
+  unsigned char e_ident[16];    // 0x7f, 'E', 'L', 'F', ...
+  uint16_t      e_type;         // ET_EXEC = 2 for executable files
+  uint16_t      e_machine;      // EM_X86_64 = 62 for AMD64 architecture
+  uint32_t      e_version;      // EV_CURRENT = 1
+  uint64_t      e_entry;        // virtual address of first instruction
+  uint64_t      e_phoff;        // file offset of first program header
+  uint64_t      e_shoff;        // file offset of first section header
+  uint32_t      e_flags;        // always zero
+  uint16_t      e_ehsize;       // size of the ELF header struct (this one)
+  uint16_t      e_phentsize;    // size of a program header struct
+  uint16_t      e_phnum;        // number of program header structs
+  uint16_t      e_shentsize;    // size of a section header struct
+  uint16_t      e_shnum;        // number of section header structs
+  uint16_t      e_shstrndx;     // string table linkage
+} Elf64_Ehdr;
+
+typedef struct {
+  uint32_t p_type;              // the purpose of the mapping
+  uint32_t p_flags;             // permissions for the mapped pages (rwx)
+  uint64_t p_offset;            // file offset of the first byte of data
+  uint64_t p_vaddr;             // virtual memory offset of the data (NB below)
+  uint64_t p_paddr;             // physical memory offset (usually zero)
+  uint64_t p_filesz;            // number of bytes from the file
+  uint64_t p_memsz;             // number of bytes to be mapped into memory
+  uint64_t p_align;             // segment alignment
+} Elf64_Phdr;
+  \end{verbatim}
+
+  If we want a very minimal executable, here's how we might write these headers
+  from Perl:
+
+  \begin{verbatim}
+# elf-header.pl: emit an ELF binary and program header to stdout
+use strict;
+use warnings;
+
+print pack('C16 SSL',
+           0x7f, ord 'E', ord 'L', ord 'F',
+           2, 1, 1, 0,
+           0, 0, 0, 0,
+           0, 0, 0, 0,
+
+           2,                           # e_type    = ET_EXEC
+           62,                          # e_machine = EM_X86_64
+           1)                           # e_version = EV_CURRENT
+
+    . pack('QQQ',
+           0x400078,                    # e_entry = 0x400078
+           64,                          # e_phoff
+           0)                           # e_shoff
+
+    . pack('LSS SSSS',
+           0,                           # e_flags
+           64,                          # e_ehsize
+           56,                          # e_phentsize
+           1,                           # e_phnum
+
+           0,                           # e_shentsize
+           0,                           # e_shnum
+           0)                           # e_shstrndx
+
+    . pack('LLQQQQQQ',
+           1,                           # p_type = PT_LOAD (map a region)
+           7,                           # p_flags = R|W|X
+           0,                           # p_offset (must be page-aligned)
+           0x400000,                    # p_vaddr
+           0,                           # p_paddr
+           0x1000,                      # p_filesz: 4KB
+           0x1000,                      # p_memsz: 4KB
+           0x1000);                     # p_align: 4KB
+  \end{verbatim}
+
+  Now we can generate the ELF header:
+
+  \begin{verbatim}
+$ sudo apt install perl                 # if perl is missing
+$ perl elf-header.pl > elf-header
+  \end{verbatim}
+
+  You can verify that the header is correct using {\tt file}, which reads magic
+  numbers and tells you about the format of things:
+
+  \begin{verbatim}
+$ sudo apt install file
+$ file elf-header
+elf-header: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically
+linked, corrupted section header size
+  \end{verbatim}
+
+  Awesome, now let's get into the machine code.
+
+  \subsection{{\tt hello world} in machine code}
+  The first thing to note is that we're talking directly to the kernel here. Our
+  ELF header above is very minimalistic, with no linker instructions or anything
+  else to complicate things. So we have none of the usual libc functions like
+  {\tt printf} or {\tt exit}; it's up to us to define those in terms of Linux
+  system calls.
+
+  TODO
 
   \subsection{Homework (if that's your thing)}
   \begin{enumerate}
-    \item Write an ELF Linux executable that prints {\tt hello world} to stdout,
-          then exits successfully.
+    \item Write an ELF Linux executable that consumes data from {\tt stdin} and
+          writes that data to {\tt stdout}, then exits successfully.
   \end{enumerate}
 \end{document}
