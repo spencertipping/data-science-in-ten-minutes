@@ -22,6 +22,7 @@ algorithms. The exact script template was {\tt ni ::self[//ni] npself zx9 zn}.}
 \begin{table}[ht]
 \begin{tabular}{llll}
   Compressor  & Compression speed & Decompression speed & Efficiency \\
+  \hline
   {\tt xz}    & 4MB/s             & 200MB/s TODO        & High \\
   {\tt bzip2} & 8MB/s             & 24MB/s              & High-ish \\
   {\tt gzip}  & 23MB/s            & 120MB/s             & Medium \\
@@ -37,17 +38,19 @@ is pretty cool. If you are ever cursed with a bzip2 file, you can accelerate
 decompression by parallelizing it across multiple cores using {\tt pbzip2},
 which is installable under Ubuntu using {\tt sudo apt install pbzip2}.
 
-Roughly speaking, here's how these compressors operate:
+Roughly speaking, here's how these compressors operate:\footnote{And
+\lnk{http://spencertipping.com/information-theory-in-ten-minutes/information-theory-in-ten-minutes.pdf}{here's
+some background on the theory}, if that's of interest}
 
 \begin{table}[ht]
 \begin{tabular}{ll}
   Compressor  & Structure \\
-  {\tt xz}    & Large-dictionary
-                \lnk{https://en.wikipedia.org/wiki/LZ77_and_LZ78}{LZ77}
+  \hline
+  {\tt xz}    & Large-dictionary \lnk{https://en.wikipedia.org/wiki/LZ77_and_LZ78}{LZ77}
                 + \lnk{https://en.wikipedia.org/wiki/Lempel\%E2\%80\%93Ziv\%E2\%80\%93Markov_chain_algorithm}{LZMA}
                 + statistical prediction \\
   {\tt bzip2} & \lnk{https://en.wikipedia.org/wiki/Run-length_encoding}{RLE}
-                + BWT
+                + \lnk{https://en.wikipedia.org/wiki/Burrows\%E2\%80\%93Wheeler_transform}{BWT}
                 + \lnk{https://en.wikipedia.org/wiki/Move-to-front_transform}{MTF}
                 + RLE
                 + \lnk{https://en.wikipedia.org/wiki/Huffman_coding}{Huffman}
@@ -98,6 +101,248 @@ reading directly from the underlying IO device.
 
 Sometimes you need Huffman encoding, though; for example, random ASCII floats
 don't have enough repetition to behave well with dictionary compressors. On my
-test case {\tt gzip} gets twice the compression ratio of {\tt lz4}, and that
+test case {\tt gzip} gets about 4x better compression than {\tt lz4}, and that
 might justify preferring it to LZ4 over slow IO devices even if it creates a CPU
 bottleneck.
+
+I generally start with {\tt gzip} at its default level and change algorithms
+later if I need to.
+
+\subsection{OK, back to Wikipedia}
+So we have 14GB of bzip2 data:
+
+\begin{verbatim}
+$ ls -lh enwiki-20170820-pages-articles.xml.bz2
+-rw-rw-r-- 1 114 122 14G May 20 00:38 enwiki-20170820-pages-articles.xml.bz2\end{verbatim}
+
+What do we do with this? I'll present the next section two ways, one with
+standard UNIX tools and one with \lnk{https://github.com/spencertipping/ni}{\tt ni},
+a tool I wrote for data science.
+
+In both cases we're solving the same problem:~let's build a list of articles
+sorted by the fraction of web citations, as opposed to other types like books or
+journals.
+
+\subsection{Wikipedia with standard UNIX tools}
+First we need a way to preview the data without decompressing the whole thing.
+The simplest strategy is to decompress into {\tt less}:
+
+\begin{verbatim}
+$ bzip2 -dc enwiki* | less
+<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.10/"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://www.mediawiki.org/xml/export-0.10/
+                               http://www.mediawiki.org/xml/export-0.10.xsd"
+           version="0.10" xml:lang="en">
+  <siteinfo>
+    <sitename>Wikipedia</sitename>
+    <dbname>enwiki</dbname>
+    <base>https://en.wikipedia.org/wiki/Main_Page</base>
+    <generator>MediaWiki 1.30.0-wmf.14</generator>
+    <case>first-letter</case>
+... \end{verbatim}
+
+Paging around a bit, the basic structure looks roughly like this:
+
+\begin{verbatim}
+<page>
+  <title>AccessibleComputing</title>
+  <ns>0</ns>
+  <id>10</id>
+  <redirect title="Computer accessibility" />
+  <revision>
+    <id>767284433</id>
+    <parentid>631144794</parentid>
+    <timestamp>2017-02-25T00:30:28Z</timestamp>
+    <contributor>
+      <username>Godsy</username>
+      <id>23257138</id>
+    </contributor>
+    <comment>[[Template:This is a redirect]] has been deprecated, change to [[Template:Redirect category shell]].</comment>
+    <model>wikitext</model>
+    <format>text/x-wiki</format>
+    <text xml:space="preserve">#REDIRECT [[Computer accessibility]]
+
+{{Redirect category shell|
+{{R from move}}
+{{R from CamelCase}}
+{{R unprintworthy}}
+}}</text>
+    <sha1>ds1crfrjsn7xv73djcs4e4aq9niwanx</sha1>
+  </revision>
+</page> \end{verbatim}
+
+Inline citations are in the text and look like this (normally one line; I've
+reformatted here):
+
+\begin{verbatim}
+{{cite book
+  |last=Dielo Trouda |authorlink=Dielo Truda
+  |title=Organizational Platform of the General Union of Anarchists (Draft)
+  |origyear=1926 |url=http://www.anarkismo.net/newswire.php?story_id=1000
+  |accessdate=24 October 2006 |year=2006 |publisher=FdCA |location=Italy
+  |archiveurl= https://web.archive.org/web/20070311013533/http://www.anarkismo.net/newswire.php?story_id=1000
+  |archivedate= 11 March 2007&lt;!--Added by DASHBot--&gt;}} \end{verbatim}
+
+Overall we have two stages to this process. The first should convert the XML
+stream to a series of rows, let's say
+\lnk{https://en.wikipedia.org/wiki/Tab-separated_values}{TSV} of {\tt webcount
+othercount title}, one per article. So the {\tt AccessibleComputing}
+not-really-article above would look like {\tt 0 0 AccessibleComputing}.
+
+\begin{verbatim}
+# wikipedia-cite-extract.pl: count citations by type per article
+use strict;
+use warnings;
+while (<STDIN>)
+{
+  # Skip rows until we hit a title, which will be stored in $1
+  next unless /<title>(.*)<\/title>/;
+
+  # Save the title and read until the end of the article text, counting any
+  # citations we find.
+  my $title = $1;
+
+  for (my ($web, $other) = (0, 0);
+       !eof and ($_ =~ <STDIN>) !~ /<\/text/;)
+  {
+    /^web$/ ? ++$web : ++$other for /\{\{cite (\w+)/g;
+  }
+  print join("\t", $web, $other, $title), "\n";
+}\end{verbatim}
+
+This runs one line at a time and streams its output, so we can quickly
+preview/debug/iterate. Here's what that looks like:
+
+\begin{verbatim}
+$ bzcat enwiki* | perl wikipedia-cite-extract.pl | less
+0       0       AccessibleComputing
+57      74      Anarchism
+0       0       AfghanistanHistory
+0       0       AfghanistanGeography
+0       0       AfghanistanPeople
+0       0       AfghanistanCommunications
+0       0       AfghanistanTransportations
+0       0       AfghanistanMilitary
+0       0       AfghanistanTransnationalIssues
+0       0       AssistiveTechnology
+0       0       AmoeboidTaxa
+18      207     Autism
+0       0       AlbaniaHistory
+...\end{verbatim}
+
+OK, we want a ratio, so let's remove citation-free articles and calculate
+$\textrm{web}/\textrm{total}$ as a fraction:
+
+\begin{verbatim}
+$ bzcat enwiki* \
+    | perl wikipedia-cite-extract.pl \
+    | perl -ane 'print join("\t", $F[0] / ($F[0] + $F[1]), @F[2..$#F]), "\n"
+                   if $F[0] + $F[1]' \
+    | less
+
+0.435114503816794       Anarchism
+0.08    Autism
+0.566666666666667       Albedo
+0.272727272727273       A
+0.826086956521739       Alabama
+0.181818181818182       Achilles
+0.123529411764706       Abraham Lincoln
+0.147540983606557       Aristotle
+...\end{verbatim}
+
+...and finally, before we write anything, let's sort the list by the fraction
+using {\tt sort}. Before I do that, though, I want to talk a little about how
+{\tt sort} works.
+
+If you're sorting a stream of things, you have to store the whole stream first.
+Then, once you have everything, you shuffle stuff $\log n$ times and emit the
+sorted values.
+
+This requires $O(n)$ space, of course, which is inconvenient:~you now have at
+least one temporary copy of the data you're sorting. If you were running this in
+a language like Python, Perl, or Ruby this would all happen in memory, which
+limits the size of data you can sort using standard APIs. UNIX {\tt sort} is
+different, though.
+
+Internally, {\tt sort} keeps only a very small amount of data in memory, by
+default something like 4MB at a time. Once it hits that limit, it writes the
+sorted buffer to a temporary file and sorts the next one, later merging them
+back from disk. GNU {\tt sort} in particular supports some extra options that
+are useful for data like this:~{\tt --compress-program} and {\tt --parallel}.
+{\tt --compress-program} instructs {\tt sort} to compress its temporary files,
+effectively reducing the {\it disk} space-complexity of the sort to $O(k)$,
+where $k$ is the compressed size of your data. This, obviously, can make a huge
+difference.
+
+So, with that said, here's the final pipeline:
+
+\begin{verbatim}
+$ sudo apt install pv pbzip2
+$ pv enwiki* \
+    | pbzip2 -dc \
+    | perl wikipedia-cite-extract.pl \
+    | perl -ane 'print join("\t", $F[0] / ($F[0] + $F[1]), @F[2..$#F]), "\n"
+                   if $F[0] + $F[1]' \
+    | sort -rn \
+    | gzip > wiki-sorted.gz\end{verbatim}
+
+{\tt pv} is {\tt cat}, but with a progress meter that looks like this:
+
+\begin{verbatim}
+ 164MiB 0:00:31 [5.39MiB/s] [>                                 ]  1% ETA 0:42:08 \end{verbatim}
+
+Having progress meters is crucial for long-running data jobs, if for no other
+reason than to make sure it looks reasonable.
+
+While that's running and before I get to the {\tt ni} version, let's talk about
+some tools useful for performance monitoring.
+
+\subsection{Monitoring tools}
+I have a standard set of things I install on Linux boxes:
+
+\begin{itemize}
+  \item {\tt htop}: {\tt top}, but better
+  \item {\tt atop}: {\tt top} for CPU, memory, disk, network, etc
+  \item {\tt units}: a unit-aware calculator (e.g.~{\tt 50GB/5Mbps in hours})
+\end{itemize}
+
+TODO: expand the above list
+
+\subsection{Wikipedia with {\tt ni}}
+\begin{verbatim}
+$ sudo apt install git pbzip2 perl perl-modules
+$ git clone git://github.com/spencertipping/ni
+$ sudo ln -s $PWD/ni/ni /usr/bin/\end{verbatim}
+
+{\tt ni} will preview compressed data automatically, so you can use it like a
+compression-aware {\tt less} by default. It also knows to use {\tt pbzip2} if
+you have it installed.
+
+\begin{verbatim}
+$ ni enwiki*          # preview data
+$ ni enwiki* r/cite/  # select rows matching the regex /cite/, preview those \end{verbatim}
+
+There's
+\lnk{https://github.com/spencertipping/ni/blob/develop/doc/ni_by_example_1.md}{extensive
+documentation on how {\tt ni} works}, which may be helpful to understand what
+these commands do.
+
+{\tt wikipedia-cite-extract.pl} and the following perl command can be folded
+into a four-liner, and \verb/sort -rn | gzip/ becomes {\tt oz}:
+
+\begin{verbatim}
+$ ni enwiki* p'return () unless /<title>(.*)<\/title>/;
+               my $t  = $1;
+               my @cs = map /\{\{cite (\w+)/, ru {/<\/text>/} or return ();
+               r grep(/^web$/, @cs) / @cs, $t' oz > wiki-sorted.gz\end{verbatim}
+
+{\tt ni} monitors the data progress for you, so you can see a preview of the
+data moving out of each pipeline stage as well as speed and bottleneck pressure.
+
+Whether you use {\tt ni}, {\tt perl}, or something else, command-line data
+processing is crucial to fast iteration on datasets. It's far less typing,
+instant startup, and no data movement.
+
+\subsection{Homework}
+TODO
