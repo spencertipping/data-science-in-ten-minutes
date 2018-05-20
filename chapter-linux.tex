@@ -1,0 +1,297 @@
+\section{Linux}
+Oh yes, we are totally going here. Here's why.
+
+Backend programs and processing pipelines and stuff (basically, ``big data''
+things) operate entirely by talking to the kernel, which, in big-data world,
+is usually Linux; and this is true regardless of the language, libraries, and
+framework(s) you're using. You can always throw more hardware at a
+problem\footnote{Until you can't}, but if you understand system-level
+programming you'll often have a better/cheaper option.
+
+Some quick background reading if you need it for the homework/curiosity:
+
+\begin{itemize}
+  \item \lnk{https://github.com/spencertipping/shell-tutorial}
+            {How to write a UNIX shell}
+  \item \lnk{https://github.com/spencertipping/jit-tutorial}
+            {How to write a JIT compiler}
+  \item \lnk{http://manpages.ubuntu.com/manpages/xenial/man5/elf.5.html}
+            {ELF executable binary spec} (more readable version
+            \lnk{https://en.wikipedia.org/wiki/Executable_and_Linkable_Format}
+            {on Wikipedia}, and
+            \lnk{https://stackoverflow.com/questions/2427011/what-is-the-difference-between-elf-files-and-bin-files}
+                {this StackOverflow answer} may be useful)
+  \item \lnk{https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf}
+            {Intel machine code documentation}
+\end{itemize}
+
+\subsection{Virtual memory}
+This is one of the two things that comes up a lot in data science
+infrastructure. Basically, any memory address you can see is virtualized and
+may not be resident in the RAM chips in your machine. The kernel talks to the
+\lnk{https://en.wikipedia.org/wiki/Memory_management_unit}{MMU hardware} to
+maintain the mapping between software and hardware pages, and when the virtual
+page set overflows physical memory the kernel swaps them to disk, usually with
+an \lnk{https://en.wikipedia.org/wiki/Cache_replacement_policies}{LRU}
+strategy.
+
+Here's where things get interesting. Linux (and any other server OS) gives you
+a {\tt mmap} system call to request that the kernel map pages into your
+program's address space. {\tt mmap}, however, has some interesting options:
+
+\begin{itemize}
+  \item \verb|MAP_SHARED|:~map the region into multiple programs' address
+        spaces (this reuses the same physical page across processes)
+  \item \verb|MAP_FILE|:~map the region using data from a file; then the
+        kernel will load file data when a page fault occurs
+\end{itemize}
+
+\verb|MAP_FILE| is sort of like saying ``swap this region to a specific file,
+rather than the shared swapfile you'd normally use.'' The implication is
+important, though:~{\it all memory mappings go through the same page
+allocation cache,} and any page fault has the potential to block your program
+on disk IO. Clever data structures like
+\lnk{https://en.wikipedia.org/wiki/Bloom_filter}{Bloom filters},
+\lnk{https://en.wikipedia.org/wiki/Count\%E2\%80\%93min_sketch}{Count-min
+sketches}, and so forth are all designed to give you a way to trade various
+degrees of accuracy for a much smaller memory footprint.
+
+Sometimes you won't have any good options within the confines of physical RAM,
+so you'll end up using IO devices to supply data; then the challenge becomes
+optimizing for those IO devices (SSDs are different from HDDs, for instance).
+I'll get to some specifics later on when we talk about sorting, joins, and
+compression.
+
+\subsection{File descriptors}
+This is the other thing you need to know about.
+
+Programs don't typically use {\tt mmap} for general-purpose IO. It's more
+idiomatic, and sometimes faster, to use {\tt read} and {\tt write} on a file
+descriptor. Internally, these functions ask the kernel to copy memory from an
+underyling file/socket/pipe/etc into mapped pages in the address space. The
+advantage is cache locality:~you can {\tt read} a small amount of stuff into a
+buffer, process the buffer, and then reuse that buffer for the next {\tt
+read}. Cache locality does matter; for example:
+
+\begin{verbatim}
+# small block size: great cache locality, too much system calling overhead
+$ dd if=/dev/zero count=262144 bs=32768 of=/dev/null
+262144+0 records in
+262144+0 records out
+8589934592 bytes (8.6 GB, 8.0 GiB) copied, 0.774034 s, 11.1 GB/s
+
+# medium block size: great cache locality, insignificant syscall overhead
+$ dd if=/dev/zero count=8192 bs=1048576 of=/dev/null
+8192+0 records in
+8192+0 records out
+8589934592 bytes (8.6 GB, 8.0 GiB) copied, 0.574597 s, 14.9 GB/s
+
+# large block size: cache overflow, insignificant syscall overhead
+$ dd if=/dev/zero count=2048 bs=$((1048576 * 4)) of=/dev/null
+2048+0 records in
+2048+0 records out
+8589934592 bytes (8.6 GB, 8.0 GiB) copied, 1.14022 s, 7.5 GB/s\end{verbatim}
+
+This makes sense considering the processor hardware:
+
+\begin{verbatim}
+$ grep cache /proc/cpuinfo
+cache size	: 3072 KB
+cache_alignment	: 64
+cache size	: 3072 KB
+cache_alignment	: 64
+cache size	: 3072 KB
+cache_alignment	: 64
+cache size	: 3072 KB
+cache_alignment	: 64\end{verbatim}
+
+\subsection{Pulling this together:~let's write a program}
+...in machine language. For simplicity, let's write one that prints {\tt hello
+world} and then exits successfully (with code 0).
+
+This is also a good opportunity to talk about how we might generate and work
+with binary data with things like fixed offsets. Two simple functions for this
+are \lnk{https://perldoc.perl.org/perlpacktut.html}{\tt pack()} and {\tt
+unpack()}, variants of which ship with both Perl and Ruby.
+
+The first part of any Linux executable is the ELF header, usually followed
+directly by a program header; here's what those look like as C structs for
+64-bit executables (reformatted slightly, and with docs for readability):
+
+\begin{verbatim}
+typedef struct {
+  unsigned char e_ident[16];    // 0x7f, 'E', 'L', 'F', ...
+  uint16_t      e_type;         // ET_EXEC = 2 for executable files
+  uint16_t      e_machine;      // EM_X86_64 = 62 for AMD64 architecture
+  uint32_t      e_version;      // EV_CURRENT = 1
+  uint64_t      e_entry;        // virtual address of first instruction
+  uint64_t      e_phoff;        // file offset of first program header
+  uint64_t      e_shoff;        // file offset of first section header
+  uint32_t      e_flags;        // always zero
+  uint16_t      e_ehsize;       // size of the ELF header struct (this one)
+  uint16_t      e_phentsize;    // size of a program header struct
+  uint16_t      e_phnum;        // number of program header structs
+  uint16_t      e_shentsize;    // size of a section header struct
+  uint16_t      e_shnum;        // number of section header structs
+  uint16_t      e_shstrndx;     // string table linkage
+} Elf64_Ehdr;
+
+typedef struct {
+  uint32_t p_type;              // the purpose of the mapping
+  uint32_t p_flags;             // permissions for the mapped pages (rwx)
+  uint64_t p_offset;            // file offset of the first byte of data
+  uint64_t p_vaddr;             // virtual memory offset of the data (NB below)
+  uint64_t p_paddr;             // physical memory offset (usually zero)
+  uint64_t p_filesz;            // number of bytes from the file
+  uint64_t p_memsz;             // number of bytes to be mapped into memory
+  uint64_t p_align;             // segment alignment
+} Elf64_Phdr;\end{verbatim}
+
+If we want a very minimal executable, here's how we might write these headers
+from Perl:
+
+\begin{verbatim}
+# elf-header.pl: emit an ELF binary and program header to stdout
+use strict;
+use warnings;
+
+print pack('C16 SSL',
+           0x7f, ord 'E', ord 'L', ord 'F',
+           2, 1, 1, 0,
+           0, 0, 0, 0,
+           0, 0, 0, 0,
+
+           2,                           # e_type    = ET_EXEC
+           62,                          # e_machine = EM_X86_64
+           1)                           # e_version = EV_CURRENT
+
+    . pack('QQQ',
+           0x400078,                    # e_entry = 0x400078
+           64,                          # e_phoff
+           0)                           # e_shoff
+
+    . pack('LSS SSSS',
+           0,                           # e_flags
+           64,                          # e_ehsize
+           56,                          # e_phentsize
+           1,                           # e_phnum
+
+           0,                           # e_shentsize
+           0,                           # e_shnum
+           0)                           # e_shstrndx
+
+    . pack('LLQQQQQQ',
+           1,                           # p_type = PT_LOAD (map a region)
+           7,                           # p_flags = R|W|X
+           0,                           # p_offset (must be page-aligned)
+           0x400000,                    # p_vaddr
+           0,                           # p_paddr
+           0x1000,                      # p_filesz: 4KB
+           0x1000,                      # p_memsz: 4KB
+           0x1000);                     # p_align: 4KB\end{verbatim}
+
+Now we can generate the ELF header:
+
+\begin{verbatim}
+$ sudo apt install perl                 # if perl is missing
+$ perl elf-header.pl > elf-header\end{verbatim}
+
+You can verify that the header is correct using {\tt file}, which reads magic
+numbers and tells you about the format of things:
+
+\begin{verbatim}
+$ sudo apt install file
+$ file elf-header
+elf-header: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically
+linked, corrupted section header size\end{verbatim}
+
+Awesome, now let's get into the machine code.
+
+\subsection{{\tt hello world} in machine code}
+The first thing to note is that we're talking directly to the kernel here. Our
+ELF header above is very minimalistic, with no linker instructions or anything
+else to complicate things. So we have none of the usual libc functions like
+{\tt printf} or {\tt exit}; it's up to us to define those in terms of Linux
+system calls.
+
+There are two calls we'll use for this:~{\tt write(2)} and {\tt exit(2)}. You
+can view the documentation for these using {\tt man}:
+
+\begin{verbatim}
+$ sudo apt install man manpages-dev
+$ man 2 write
+$ man 2 exit\end{verbatim}
+
+We'll need to pass arguments in registers to match the
+\lnk{https://stackoverflow.com/questions/2535989/what-are-the-calling-conventions-for-unix-linux-system-calls-on-i386-and-x86-6}
+    {kernel calling convention}. I'll spare you the gory details and cut
+straight to the machine code:
+
+\begin{verbatim}
+# elf-hello.pl: emit machine code for hello world, then exit successfully
+use strict;
+use warnings;
+print pack('H*', join '',
+  '4831c0',                             # xorq %rax, %rax
+  'b001',                               # movb $01, %al (1 = write syscall)
+  'e80c000000',                         # call %rip+12 (jump over the message)
+  unpack('H*', "hello world\n"),        # the message
+  '5e',                                 # pop message into %rsi (buf arg)
+  'ba0c000000',                         # movl $12, %rdx (len arg)
+  '48c7c701000000',                     # movl $1, %rdi (fd arg)
+  '0f05',                               # syscall instruction
+
+  '4831c0',                             # xorq %rax, %rax
+  'b03c',                               # movb $3c, %rax (3c = exit syscall)
+  '4831ff',                             # xorq %rdi, %rdi (exit code arg)
+  '0f05');                              # syscall instruction\end{verbatim}
+
+Now we can build the full executable, verify it, and run:
+
+\begin{verbatim}
+$ sudo apt install nasm
+$ perl elf-hello.pl | cat elf-header - > elf-hello
+$ chmod 755 elf-hello
+$ tail -c+121 elf-hello | ndisasm -b 64 -
+00000000  4831C0            xor rax,rax
+00000003  B001              mov al,0x1
+00000005  E80C000000        call 0x16
+0000000A  68656C6C6F        push qword 0x6f6c6c65   # corruption from message
+0000000F  20776F            and [rdi+0x6f],dh       # (which we jumped over)
+00000012  726C              jc 0x80
+00000014  640A5EBA          or bl,[fs:rsi-0x46]
+00000018  0C00              or al,0x0
+0000001A  0000              add [rax],al
+0000001C  48C7C701000000    mov rdi,0x1             # now we're back on track
+00000023  0F05              syscall
+00000025  4831C0            xor rax,rax
+00000028  B03C              mov al,0x3c
+0000002A  4831FF            xor rdi,rdi
+0000002D  0F05              syscall\end{verbatim}
+
+The moment we've been waiting for:
+
+\begin{verbatim}
+$ ./elf-hello
+hello world
+$ echo $?                               # check exit status
+0\end{verbatim}
+
+Whether through libraries, JIT, or anything else, this is the exact mechanism
+being used by any program that performs IO of any sort:~the program lives in a
+completely virtual world and interacts with the kernel using the {\tt 0f05}
+syscall instruction, referring to virtual addresses in the process.
+
+\subsection{Homework, if that's your thing}
+\begin{enumerate}
+  \item Write an ELF Linux executable that consumes data from {\tt stdin} and
+        writes that data to {\tt stdout}, then exits successfully. In other
+        words, {\tt cat} without file support.
+  \item Use {\tt pack()} to produce a
+        \lnk{https://en.wikipedia.org/wiki/WAV}{RIFF WAV} file containing a
+        440Hz sine wave for ten seconds. It may be helpful to use {\tt
+        unpack()} to inspect the headers of existing WAV files because it's
+        challenging to find detailed documentation of the format.
+  \item Problem (2), but have no more than 256 bytes of string data resident
+        at any given moment.
+\end{enumerate}

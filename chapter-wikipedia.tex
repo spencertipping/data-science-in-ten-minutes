@@ -1,0 +1,103 @@
+\section{Wikipedia}
+You can
+\lnk{https://en.wikipedia.org/wiki/Wikipedia:Database_download}{download the
+full English language Wikipedia} as a giant bzip2-compressed XML file. For
+reference,
+\lnk{http://itorrents.org/torrent/D567CE8E2EC4792A99197FB61DEAEBD70ADD97C0.torrent}{here's
+the exact torrent file I downloaded}. It's about 14GB compressed, which is not
+big data by any means; you could process this on a Raspberry Pi with a 64GB SD
+card if you wanted to.\footnote{Be careful with SD cards and Flash storage in
+general; if you write the memory too many times you'll destroy the drive. I'll
+mention this hazard anytime I have an IO-intensive process.}
+
+While that's downloading, let's take a moment to talk about compression formats.
+
+\subsection{Compression}
+There are a few standard, general-purpose data compressors you're likely to
+encounter regularly:\footnote{I ran these tests by compressing an infinite
+stream of copies of \lnk{https://github.com/spencertipping/ni}{the ni
+repository}, which is large enough to overflow any buffers used by these
+algorithms. The exact script template was {\tt ni ::self[//ni] npself zx9 zn}.}
+
+\begin{table}[ht]
+\begin{tabular}{llll}
+  Compressor  & Compression speed & Decompression speed & Efficiency \\
+  {\tt xz}    & 4MB/s             & 200MB/s TODO        & High \\
+  {\tt bzip2} & 8MB/s             & 24MB/s              & High-ish \\
+  {\tt gzip}  & 23MB/s            & 120MB/s             & Medium \\
+  {\tt lzo}   & 200MB/s           & 300MB/s TODO        & Low \\
+  {\tt lz4}   & 240MB/s           & 800MB/s TODO        & Low
+\end{tabular}
+\end{table}
+
+If you take one thing away from this table, it's {\it don't use bzip2}. {\tt
+bzip2} is horrible, even though the
+\lnk{https://en.wikipedia.org/wiki/Burrows\%E2\%80\%93Wheeler_transform}{algorithm}
+is pretty cool. If you are ever cursed with a bzip2 file, you can accelerate
+decompression by parallelizing it across multiple cores using {\tt pbzip2},
+which is installable under Ubuntu using {\tt sudo apt install pbzip2}.
+
+Roughly speaking, here's how these compressors operate:
+
+\begin{table}[ht]
+\begin{tabular}{ll}
+  Compressor  & Structure \\
+  {\tt xz}    & Large-dictionary
+                \lnk{https://en.wikipedia.org/wiki/LZ77_and_LZ78}{LZ77}
+                + \lnk{https://en.wikipedia.org/wiki/Lempel\%E2\%80\%93Ziv\%E2\%80\%93Markov_chain_algorithm}{LZMA}
+                + statistical prediction \\
+  {\tt bzip2} & \lnk{https://en.wikipedia.org/wiki/Run-length_encoding}{RLE}
+                + BWT
+                + \lnk{https://en.wikipedia.org/wiki/Move-to-front_transform}{MTF}
+                + RLE
+                + \lnk{https://en.wikipedia.org/wiki/Huffman_coding}{Huffman}
+                + bit-sparse \\
+  {\tt gzip}  & \lnk{https://en.wikipedia.org/wiki/LZ77_and_LZ78}{LZ77}
+                + \lnk{https://en.wikipedia.org/wiki/Huffman_coding}{Huffman} \\
+  {\tt lzo}   & Dictionary \\
+  {\tt lz4}   & Dictionary
+\end{tabular}
+\end{table}
+
+It's worth knowing the broad strokes because the nature of the data will impact
+compression performance, both in space and time. For example, the
+\lnk{http://files.pushshift.io/reddit/}{Reddit comments dataset} contains a
+bunch of identical-schema JSON objects that look roughly like this (reformatted
+for readability):
+
+\begin{verbatim}
+{ "author":"CreativeTechGuyGames",
+  "author_flair_css_class":null,
+  "author_flair_text":null,
+  "body":"You are looking to create a reddit bot? You will want to check out
+          the [reddit API](https://www.reddit.com/dev/api). Many people do
+          this in Python and there are many tutorials on the internet showing
+          how to do so.",
+  "can_gild":true,
+  "controversiality":0,
+  "created_utc":1506816001,
+  "distinguished":null,
+  "edited":false,
+  "gilded":0,
+  "id":"dnqik29",
+  "is_submitter":false,
+  "link_id":"t3_73if9c",
+  "parent_id":"t1_dnqihqz",
+  "permalink":"/r/learnprogramming/comments/73if9c/how_i_would_i_go_around_making_something_like_this/dnqik29/",
+  "retrieved_on":1509189607,
+  "score":1,
+  "stickied":false,
+  "subreddit":"learnprogramming",
+  "subreddit_id":"t5_2r7yd" }
+\end{verbatim}
+
+A nontrivial amount of the bulk in this file is stored in the JSON field names,
+so dictionary encoding alone is likely to save us a nontrivial amount of space.
+LZ4 is worthwhile here just for that, and would almost certainly be faster than
+reading directly from the underlying IO device.
+
+Sometimes you need Huffman encoding, though; for example, random ASCII floats
+don't have enough repetition to behave well with dictionary compressors. On my
+test case {\tt gzip} gets twice the compression ratio of {\tt lz4}, and that
+might justify preferring it to LZ4 over slow IO devices even if it creates a CPU
+bottleneck.
