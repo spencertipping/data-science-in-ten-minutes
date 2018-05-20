@@ -105,6 +105,32 @@ cache_alignment	: 64
 cache size	: 3072 KB
 cache_alignment	: 64\end{verbatim}
 
+\subsection{Concurrency and FIFOs}
+When you say something like \verb/cat file | wc -l/, {\tt cat}'s {\tt stdout}
+(file descriptor 1) maps to the write-end of a kernel FIFO pipe and {\tt wc}'s
+{\tt stdin} (fd 0) maps to the read end of that same FIFO. {\tt wc}'s {\tt
+stdout} is the same as your shell's {\tt stdout}:~it points to the terminal
+device.
+
+This raises an interesting question:~what happens if two separate processes
+write to the same FIFO device? Those processes could be running on separate
+processors, which means a race condition could theoretically arise. Roughly
+speaking, the kernel applies a couple of rules to the situation:
+
+\begin{enumerate}
+  \item Each device has a well-defined timeline, so {\tt write} calls are
+        serialized per device. I'm not sure how the kernel breaks ties, but it
+        probably doesn't matter very much.
+  \item Writes of \verb|PIPE_BUF|\footnote{{\tt 4096} on my system, but it can
+        be as low as {\tt 512}. You can find this value using {\tt getconf -a |
+        grep PIPE\_BUF}.} or fewer bytes are atomic; that is, you're guaranteed
+        that those bytes will all be grouped together in the output.
+  \item Once you've written data, it's committed; there's no buffering or
+        undoing a {\tt write} at the system call level.\footnote{Devices
+        sometimes do their own buffering, e.g.~for network connections, but you
+        can't access these buffers.}
+\end{enumerate}
+
 \subsection{Pulling this together:~let's write a program}
 ...in machine language. For simplicity, let's write one that prints {\tt hello
 world} and then exits successfully (with code 0).

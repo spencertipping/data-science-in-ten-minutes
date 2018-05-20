@@ -356,4 +356,17 @@ movement (and often faster; I'll cover that in more detail in later chapters).
         relative overhead of parsing integers (vs line processing + tab
         splitting) when we filter the data? You could answer this question for
         {\tt perl} or any other scripting language.
+  \item At what point does {\tt pv} become the bottleneck in a pipeline? Is {\tt
+        cat} or {\tt dd} faster? What's the most important implementation
+        difference that makes them perform differently?
+  \item Use the
+        \lnk{http://manpages.ubuntu.com/manpages/bionic/man1/split.1.html}{\tt split}
+        core utility to break Wikipedia into smaller files, without writing any
+        uncompressed data to disk. What is the fastest way to count all
+        citations in these pieces?\footnote{Hint:~\lnk{http://manpages.ubuntu.com/manpages/bionic/man1/xargs.1.html}{\tt
+        xargs} may be useful if you have multiple processors.} What are the
+        tradeoffs that govern how large these pieces should be?
+  \item {\tt xargs} shares the output file descriptor across its child
+        processes, which can lead to data corruption if you use it in
+        conjunction with {\tt -P}. Write a pipeline that has this problem.
 \end{enumerate}
