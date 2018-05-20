@@ -19,12 +19,14 @@ stream of copies of \lnk{https://github.com/spencertipping/ni}{the ni
 repository}, which is large enough to overflow any buffers used by these
 algorithms. The exact script template was {\tt ni ::self[//ni] npself zx9 zn}.}
 
+TODO:~use wikipedia data for the table below, obviously
+
 \begin{table}[ht]
 \begin{tabular}{llll}
   Compressor  & Compression speed & Decompression speed & Efficiency \\
   \hline
   {\tt xz}    & 4MB/s             & 200MB/s TODO        & High \\
-  {\tt bzip2} & 8MB/s             & 24MB/s              & High-ish \\
+  {\tt bzip2} & 8MB/s             & {\bf 24MB/s}        & High-ish \\
   {\tt gzip}  & 23MB/s            & 120MB/s             & Medium \\
   {\tt lzo}   & 200MB/s           & 300MB/s TODO        & Low \\
   {\tt lz4}   & 240MB/s           & 800MB/s TODO        & Low
@@ -299,15 +301,15 @@ While that's running and before I get to the {\tt ni} version, let's talk about
 some tools useful for performance monitoring.
 
 \subsection{Monitoring tools}
-I have a standard set of things I install on Linux boxes:
+I have a
+\lnk{https://github.com/spencertipping/docker/blob/master/Dockerfile\#L20}{standard
+set of things} I install on Linux boxes that includes:
 
 \begin{itemize}
   \item {\tt htop}: {\tt top}, but better
   \item {\tt atop}: {\tt top} for CPU, memory, disk, network, etc
   \item {\tt units}: a unit-aware calculator (e.g.~{\tt 50GB/5Mbps in hours})
 \end{itemize}
-
-TODO: expand the above list
 
 \subsection{Wikipedia with {\tt ni}}
 \begin{verbatim}
@@ -341,8 +343,17 @@ $ ni enwiki* p'return () unless /<title>(.*)<\/title>/;
 data moving out of each pipeline stage as well as speed and bottleneck pressure.
 
 Whether you use {\tt ni}, {\tt perl}, or something else, command-line data
-processing is crucial to fast iteration on datasets. It's far less typing,
-instant startup, and no data movement.
+processing is crucial to fast iteration on datasets. Compared to Hadoop/Spark,
+it's far less typing and effort, instant startup and debugging, and no data
+movement (and often faster; I'll cover that in more detail in later chapters).
 
 \subsection{Homework}
-TODO
+\begin{enumerate}
+  \item What is the tenth most common word in Wikipedia? Assume you're running
+        in a memory-constrained environment.
+  \item Write a simple disk-backed {\tt sort} utility in your favorite language.
+  \item Given the TSV of {\tt web other title} we built above, what is the
+        relative overhead of parsing integers (vs line processing + tab
+        splitting) when we filter the data? You could answer this question for
+        {\tt perl} or any other scripting language.
+\end{enumerate}
