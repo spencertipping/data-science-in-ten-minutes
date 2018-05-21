@@ -1,7 +1,7 @@
 # [Data science in ten minutes](data-science-in-ten-minutes.pdf)
 ...for extremely large values of ten.
 
-![image](http://spencertipping.com/ds-ten-contents.jpg)
+[![image](http://spencertipping.com/ds-ten-contents.jpg)](data-science-in-ten-minutes.pdf)
 
 Very much WIP at the moment, but it may be of interest in its current state.
 
