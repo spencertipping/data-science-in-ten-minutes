@@ -286,7 +286,7 @@ $ pv enwiki* \
     | perl wikipedia-cite-extract.pl \
     | perl -ane 'print join("\t", $F[0] / ($F[0] + $F[1]), @F[2..$#F]), "\n"
                    if $F[0] + $F[1]' \
-    | sort -rn \
+    | sort -rn --compress-program=gzip \
     | gzip > wiki-sorted.gz\end{verbatim}
 
 {\tt pv} is {\tt cat}, but with a progress meter that looks like this:
@@ -310,6 +310,8 @@ set of things} I install on Linux boxes that includes:
   \item {\tt atop}: {\tt top} for CPU, memory, disk, network, etc
   \item {\tt units}: a unit-aware calculator (e.g.~{\tt 50GB/5Mbps in hours})
 \end{itemize}
+
+TODO:~make this section less sad and lonely
 
 \subsection{Wikipedia with {\tt ni}}
 \begin{verbatim}

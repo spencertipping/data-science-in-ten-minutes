@@ -47,22 +47,19 @@
   programming:~your binaries won't be portable to cluster machines, and you'll
   be fighting with things like case-insensitive filesystems, slower core
   utilities, and general inconsistencies that will increase debugging
-  time.\footnote{All of this is a non-issue for JVM processes, e.g.~Hadoop and
-  Spark, but a lot of data science is best done with native tools that use less
-  memory and have lower iteration time.}
+  time.\footnote{Some of this is a non-issue for JVM processes, e.g.~Hadoop and
+  Spark, but a lot of data science is best done with native tools that are more
+  powerful, use less memory, and have much lower iteration time.}
 
   \subsection*{Examples}
   This guide comes with
   \lnk{https://github.com/spencertipping/data-science-in-ten-minutes/tree/master/example}{example
   code} in the original repository. Where necessary, I've included package
-  installation commands required to install dependencies on Ubuntu 18.04.
+  installation commands required to install dependencies on Ubuntu 18.04. Any
+  hard dependencies are pretty boring and easy to install; you won't need
+  anything like the RVM or any custom libraries.
 
   \newpage\input{chapter-linux.tex}
   \newpage\input{chapter-wikipedia.tex}
-
-  \newpage
-  \section{Homework solutions}
-  \input{solutions-linux.tex}
-  \input{solutions-wikipedia.tex}
-
+  \newpage\input{chapter-hashing.tex}
 \end{document}

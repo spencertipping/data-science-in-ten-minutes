@@ -1,5 +1,5 @@
-\subsection{Wikipedia}
-\subsubsection{Tenth most common word}
+\section{Wikipedia}
+\subsection{Tenth most common word}
 First with {\tt ni} using 24x pipeline scaling for the word extraction loop:
 
 \begin{verbatim}
@@ -22,10 +22,10 @@ $ pv enwiki* \
   | tail -n+10 \
   | head -n1\end{verbatim}
 
-\subsubsection{Disk-backed {\tt sort}}
+\subsection{Disk-backed {\tt sort}}
 TODO
 
-\subsubsection{Measuring overhead of integer parsing}
+\subsection{Measuring overhead of integer parsing}
 Let's mock up a datasource here. The specific integer value won't matter very
 much; mainly we need to get the shape of the data right. If we generate numbers
 between 1 and 11 randomly, we should get roughly the right distribution of
@@ -56,7 +56,7 @@ We can use {\tt units} to get a percentage.
 $ units -t '1/(19MB/s) / (1/(22MB/s))' percent
 115.78947           # integer parsing adds ~16% overhead\end{verbatim}
 
-\subsubsection{{\tt pv} vs {\tt cat} vs {\tt dd}}
+\subsection{{\tt pv} vs {\tt cat} vs {\tt dd}}
 {\tt pv} is faster than {\tt cat} and {\tt dd} (even across different block
 sizes; I couldn't find one that got close to {\tt pv} speed):
 
@@ -88,7 +88,7 @@ anything into virtual memory at all? The Linux kernel provides the
 \lnk{https://en.wikipedia.org/wiki/Splice_(system_call)}{{\tt splice} syscall}
 to bypass the extra copy, and that's exactly how {\tt pv} gets its advantage.
 
-\subsubsection{Split Wikipedia}
+\subsection{Split Wikipedia}
 {\tt split} has an option that lets you specify a compressor, which is useful
 here. The general idea would be something like this:
 

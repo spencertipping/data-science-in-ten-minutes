@@ -5,6 +5,8 @@
 
 Very much WIP at the moment, but it may be of interest in its current state.
 
+WIP homework solutions are [here](solutions.pdf).
+
 A strange, but I think important, take on data science and getting shit done
 when the infrastructure and hardware isn't up to the task. If you are generally
 fearless and want to become an unstoppable data-shredding machine, this is the
