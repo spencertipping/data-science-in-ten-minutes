@@ -369,4 +369,7 @@ movement (and often faster; I'll cover that in more detail in later chapters).
   \item {\tt xargs} shares the output file descriptor across its child
         processes, which can lead to data corruption if you use it in
         conjunction with {\tt -P}. Write a pipeline that has this problem.
+  \item Given that Perl is ultimately using the {\tt read()} system call, what
+        machinery is involved to implement the ``read a line from {\tt stdin}''
+        operation?
 \end{enumerate}

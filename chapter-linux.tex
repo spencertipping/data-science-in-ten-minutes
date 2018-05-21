@@ -303,10 +303,14 @@ hello world
 $ echo $?                               # check exit status
 0\end{verbatim}
 
-Whether through libraries, JIT, or anything else, this is the exact mechanism
-being used by any program that performs IO of any sort:~the program lives in a
-completely virtual world and interacts with the kernel using the {\tt 0f05}
-syscall instruction, referring to virtual addresses in the process.
+Whether through static/dynamically-linked libraries, JIT, or anything else, this
+is the exact mechanism being used by any program that performs IO of any
+sort:~the program lives in a completely virtual world and interacts with the
+kernel using the {\tt 0f05} syscall instruction, referring to virtual addresses
+in the process. Efficient data science is ultimately about maximizing the
+throughput you're getting from the system calls you make (which, in practice,
+means choosing languages and libraries that make this easy to do for your
+application).
 
 \subsection{Homework, if that's your thing}
 \begin{enumerate}

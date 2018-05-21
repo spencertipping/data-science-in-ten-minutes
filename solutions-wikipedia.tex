@@ -1,0 +1,19 @@
+\subsection{Wikipedia}
+\subsubsection{Tenth most common word}
+First with {\tt ni} using 24x parallelism:
+
+\begin{verbatim}
+$ ni enwiki* rp'/<text/../<\/text>/' S24F'/\{\{[^}]*\}\}/'FWpF_ gcO r-9 r1\end{verbatim}
+
+Using standard UNIX tools:
+
+\begin{verbatim}
+$ pv enwiki* \
+  | pbzip2 -dc \
+  | awk '/<text/,/<\/text/ {print}' \
+  | less
+# TODO
+\end{verbatim}
+
+\subsubsection{Disk-backed {\tt sort}}
+TODO
