@@ -1,0 +1,17 @@
+\section{Canvas}
+\lnk{https://planet.osm.org/}{OSM Planet} is one of my favorite datasets, if for
+no other reason than the fact that it's
+\lnk{http://spencertipping.com/ni-osm.gif}{so much fun to visualize}. Like
+Wikipedia, it's also stored in an awkward XML/bzip2 format; unlike Wikipedia,
+though, this format has some relational elements that complicate processing a
+bit unless you have tons of memory. First things first:~let's get it downloaded
+(this requires about 70GB of free space):
+
+\begin{verbatim}
+$ sudo apt install wget
+$ wget https://planet.osm.org/planet/planet-latest.osm.bz2 \end{verbatim}
+
+While that's running, let's get into the format a bit.
+
+\subsection{OSM schema, give or take}
+
