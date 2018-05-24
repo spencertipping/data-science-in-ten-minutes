@@ -26,7 +26,7 @@ TODO:~use wikipedia data for the table below, obviously
   Compressor  & Compression speed & Decompression speed & Efficiency \\
   \hline
   {\tt xz}    & 4MB/s             & 200MB/s TODO        & High \\
-  {\tt bzip2} & 8MB/s             & {\bf 24MB/s}        & High-ish \\
+  {\tt bzip2} & 8MB/s             & {\bf 24MB/s/core}   & High-ish \\
   {\tt gzip}  & 23MB/s            & 120MB/s             & Medium \\
   {\tt lzo}   & 200MB/s           & 300MB/s TODO        & Low \\
   {\tt lz4}   & 240MB/s           & 800MB/s TODO        & Low
@@ -38,7 +38,10 @@ bzip2} is horrible, even though the
 \lnk{https://en.wikipedia.org/wiki/Burrows\%E2\%80\%93Wheeler_transform}{algorithm}
 is pretty cool. If you are ever cursed with a bzip2 file, you can accelerate
 decompression by parallelizing it across multiple cores using {\tt pbzip2},
-which is installable under Ubuntu using {\tt sudo apt install pbzip2}.
+which is installable under Ubuntu using {\tt sudo apt install
+pbzip2}.\footnote{{\tt bzip2} is atypical for supporting parallel decompression.
+Most are designed to be strictly serial because this design tends to produce
+better compression ratios.}
 
 Roughly speaking, here's how these compressors operate:\footnote{And
 \lnk{http://spencertipping.com/information-theory-in-ten-minutes/information-theory-in-ten-minutes.pdf}{here's

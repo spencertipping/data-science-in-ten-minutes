@@ -11,7 +11,79 @@ bit unless you have tons of memory. First things first:~let's get it downloaded
 $ sudo apt install wget
 $ wget https://planet.osm.org/planet/planet-latest.osm.bz2 \end{verbatim}
 
-While that's running, let's get into the format a bit.
+While that's running, here's some pontification about how awful it is to be a
+data scientist.
 
-\subsection{OSM schema, give or take}
+\subsection{Visualizing stuff}
+As a rule, data is too damn big. Not for any specific purpose, it's just too big
+in general. There are some common options for visualizing things:
 
+\begin{itemize}
+  \item \lnk{https://matplotlib.org/gallery/index.html}{MatPlotLib}
+  \item \lnk{https://bokeh.pydata.org/en/latest/docs/gallery.html}{Bokeh}
+  \item \lnk{http://www.gnuplotting.org/}{GnuPlot}
+  \item \lnk{https://d3js.org/}{D3}
+  \item \lnk{https://github.com/spencertipping/ni/blob/develop/doc/visual.md}{\tt ni --js}\footnote{Full disclosure:~I wrote this one, but there's a reason I added it to this list}
+\end{itemize}
+
+My main beef with most existing solutions, though, is that they prioritize
+presentation over scale. Let's take gnuplot as an example:~it uses a custom
+rendering system, so no DOM objects (good), but it's not really cut out to
+handle a million points. In my experience it takes the view a good 20-30 seconds
+to pan/zoom/etc at that scale.
+
+The problem with this, of course, is that a million isn't ``big data'' or
+anywhere close. In any ordinary problem, one million low-dimensional entities
+(i.e.~not entire articles or something) would be considered {\it really small}
+data. To get a sense of scale, let's count some entities from various
+datasets:\footnote{Each of these commands is almost entirely
+decompression-bound; this is a great example of a use case where LZ4 or similar
+comes in handy. These jobs would be faster if I had sharded out the files up
+front, but not by much:~the 12-disk RAID6 is about 60\% IO-bound as it is and
+the storage server only has eight processors.} \footnote{These jobs consumed
+about 180W over baseline and ran for a couple of hours, so the overall cost was
+\$0.061 -- or \$0.02/TB. I realize it's not an entirely fair comparison, but
+this is 250x cheaper than the \$5/TB that
+\lnk{https://cloud.google.com/bigquery/pricing}{Google BigQuery} charges.}
+
+\begin{verbatim}
+# Wikipedia: how many articles? (xz/ubuntu: 45MB/s)
+$ ni enwiki-7820 S24r'/<page>/' e'wc -l'
+17,773,690
+
+# OpenStreetMap: how many vertices? (LZ4/gentoo: 480MB/s)
+$ ni osm-planet-2018.0101.lz4 S8e[grep -c '<node'] ,sr+1
+4,254,954,891
+
+# NYC Taxicab: how many pickup/dropoffs? (LZ4/gentoo: 370MB/s)
+$ ni nyctaxi-trip.lz4 e'wc -l'
+173,179,759
+
+# Reddit comments: how many comments from 2005 to 2017? (LZ4/ubuntu: 335MB/s)
+$ ni RC_*.lz4 e'wc -l'
+3,012,842,697\end{verbatim}
+
+I should also point out that none of these datasets are ``big data'' in an
+industrial sense; they're just things I have lying around on the storage server.
+I think they all compress to under 1TB. But already we're dealing with billions
+of data points, which is obviously a lot more than most visualization tools are
+built to handle.
+
+So where do things go sideways? Let's look at it in terms of bytes of heap usage
+per data point. I'm going to make some rough guesses based on how these tools
+work:
+
+\begin{itemize}
+  \item MatPlotLib:~uses NumPy for storage, so 4-8 bytes/object/dimension
+  \item Bokeh:~uses WebGL, so 8 bytes/object/dimension (probably? TODO)
+  \item Gnuplot:~\lnk{https://github.com/gnuplot/gnuplot/blob/f4be5f41b49262f006595512780cca01669887b8/src/gp_types.h\#L183}{native
+        C code}; it looks like 64 bytes/object with struct padding
+  \item D3:~backs into SVG, so at least 100 bytes/object (most likely 200-400)
+  \item {\tt ni --js}:~uses {\tt Float64Array} for storage and reservoir
+        sampling, so $\le$8 bytes/object/dimension
+\end{itemize}
+
+I don't want to rag on D3 and Gnuplot too much; these are both great tools when
+your data is small enough. But anytime you're starting with a billion data
+points and your visualization layer is only good to 10K, that's another thing
+you'll end up needing to manage -- and that drives up your costs/iteration time.
