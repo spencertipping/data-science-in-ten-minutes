@@ -131,6 +131,30 @@ speaking, the kernel applies a couple of rules to the situation:
         can't access these buffers.}
 \end{enumerate}
 
+\subsection{{\tt SIGPIPE} and shell pipelines}
+If you write something like \verb/cat file | head -n100 | wc -c/, your shell
+will simultaneously start three subprocesses:~{\tt cat}, {\tt head}, and {\tt
+wc}. Each of those processes will continue doing IO until it observes EOF on
+some input, or until it's killed for some reason -- so how does {\tt head} end
+up telling {\tt cat} to stop piping data to its standard output?
+
+Internally, {\tt head} is basically doing this:
+
+\begin{verbatim}
+100 times:
+  l = readline
+  print l
+exit 0
+\end{verbatim}
+
+Once {\tt head} exits, it no longer refers to the read end of the FIFO connected
+to {\tt cat}. This means that FIFO has no more readers at all, so the FIFO
+object and its buffers can be garbage-collected by the kernel. {\tt cat} still
+has a reference, though, which is fine until it attempts to write into the FIFO.
+At that point {\tt cat} will receive the {\tt SIGPIPE} signal, whose default
+action is to kill the process. This causes {\tt cat} to early-exit rather than
+continuing to read the file.
+
 \subsection{Pulling this together:~let's write a program}
 ...in machine language. For simplicity, let's write one that prints {\tt hello
 world} and then exits successfully (with code 0).
