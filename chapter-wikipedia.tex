@@ -352,6 +352,41 @@ processing is crucial to fast iteration on datasets. Compared to Hadoop/Spark,
 it's far less typing and effort, instant startup and debugging, and no data
 movement (and often faster; I'll cover that in more detail in later chapters).
 
+\subsection{Prototyping, debugging, and iterating quickly}
+Making stuff happen fast is about minimizing the amount of time until your
+pipeline blocks from {\tt less} or exits due to EOF or {\tt SIGPIPE}. The most
+obvious way to do this is to use a truncating program like {\tt head} on your
+source data file. For example, we can preview our Wikipedia pipeline by just
+looking at the first 1000 articles; this will early-exit the {\tt sort} intake
+step and give us a preview within about three seconds:
+
+\begin{verbatim}
+$ ni enwiki* p'return () unless /<title>(.*)<\/title>/;
+               my $t  = $1;
+               my @cs = map /\{\{cite (\w+)/, ru {/<\/text>/} or return ();
+               r grep(/^web$/, @cs) / @cs, $t' \
+             r1000 \
+             o
+
+0       ACE inhibitor
+0       AI-complete
+0       ARY Group
+0       Aare
+0       Abae
+0       Abakan
+0       Abati
+0       Abbas Mirza
+... \end{verbatim}
+
+That's enough data to confirm that the pipeline is doing roughly the right
+thing.
+
+So why do we use {\tt head} (written in {\tt ni} as {\tt rN}) as opposed to
+downsampling? Because {\tt head} consumes the fewest bytes before ending the
+dataflow. Sometimes you'll want to use a combination of downsampling ({\tt r.01}
+in {\tt ni}) and {\tt head} to explore more data in a bounded way; it depends on
+what you're trying to find out and where your bottlenecks are.
+
 \subsection{Homework}
 \begin{enumerate}
   \item What is the tenth most common word in Wikipedia? Assume you're running
